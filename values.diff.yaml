@@ -11,7 +11,7 @@ rbac:
   create: false
 
 ## Inform the chart of this ServiceAccount, but create it elsewhere. 
-## See 
+## See rbac.gitlab-runner.yaml
 serviceAccount: 
   create: false
   name: glr-manager-sa
@@ -24,7 +24,7 @@ runners:
       executor  = "kubernetes"
 
       [runners.kubernetes]
-        ## See 
+        ## See rbac.gitlab-runner.yaml
         service_account = "glr-jobs-sa"
         namespace       = "glr-jobs"
         pull_policy     = "if-not-present"
