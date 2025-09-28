@@ -1,168 +1,74 @@
-
 # [`gitlab-runner` on K8S](https://docs.gitlab.com/runner/install/kubernetes/)
 
-Helm chart does not reference the helper.   
-Rather, automatically pulls that matching runner
+## [GitLab Runners on RHEL](https://chat.deepseek.com/share/u6s8c9cy25pi4h51j1)
 
-```bash
-version=17.11.3
-arch=x86_64
 
-runner=gitlab-org/gitlab-runner:v$version
-helper=gitlab-org/gitlab-runner/gitlab-runner-helper:${arch}-v${version}
+### ssh executor
 
+Target host(s), where Jobs of this ssh executor are performed, 
+must have the SSH user (`gitlab-runner`).
+
+@ `/etc/gitlab-runner/config.toml`
+
+```toml
+[[runners]]
+  name = "fips-ssh-executor"
+  executor = "ssh"
+  [runners.ssh]
+    user = "gitlab-runner"
+    host = "glr01"
+    # Key per project
+    identity_file = "/etc/gitlab-runner/keys/prj_${CI_PROJECT_NAMESPACE}_ecdsa"
+    # FIPS-compliant SSH options
+    ssh_config = "/etc/gitlab-runner/ssh_config"
 ```
 
-### GitLab Container Registry
+Add audit trail 
 
-- [Base images](https://gitlab.com/gitlab-org/ci-cd/runner-tools/base-images/-/tree/main/dockerfiles/runner)
-    - [`registry.gitlab.com/gitlab-org/gitlab-runner`](https://gitlab.com/gitlab-org/gitlab-runner/container_registry)
-    - [`registry.gitlab.com/gitlab-org/ci-cd/runner-tools`](https://gitlab.com/gitlab-org/ci-cd/runner-tools)
-
-&nbsp;
-
-```bash
-☩ dit
-IMAGE ID       REPOSITORY:TAG                                                                                 SIZE
-02c727a1f782   registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:alpine3.21-x86_64-v17.11.3   90.9MB
-d29f67270c65   registry.gitlab.com/gitlab-org/gitlab-runner:alpine3.21-v17.11.3                               198MB
-```
-```bash
-img=registry.gitlab.com/gitlab-org/gitlab-runner:alpine3.21-v17.11.3
-trivy image --scanners vuln --severity CRITICAL,HIGH $img
-
-```
-
-## [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner) | [Releases](https://gitlab.com/gitlab-org/gitlab-runner/-/releases)
-
-
-### [Helm chart : How To](https://docs.gitlab.com/runner/install/kubernetes/)
-
-```bash
-repo=gitlab
-chart=gitlab-runner
-ver=0.76.3 # runner: v17.11.3
-ns=glr-manager # gitlab-runner : Controller only
-release=$chart
-values=values.yaml
-secret=glrt-secret
-tkn="$(<$secret.key)"
-
-# Instead of this, add token secret at helm upgrade using --set method
-# kubectl create ns $ns
-# kubectl create secret generic $secret \
-#     --from-literal=runner-token="$tkn" \
-#     -n $ns
-
-# Apply RBAC for both Manager and Jobs
-kubectl apply -f rbac.$release.yaml
-
-# Add repo
-helm repo update $repo ||
-    helm repo update $repo
-
-# Available versions : chart vs. runner
-helm search repo -l $repo/$chart
-
-# Pull chart to extract values.yaml
-helm pull $repo/$chart --version $ver &&
-    tar -xaf ${chart}-$ver.tgz &&
-        cp gitlab-runner/values.yaml values.default.yaml &&
-            rm ${chart}-$ver.tgz
-
-# Mod : Keep only the modified sections 
-vi $values
-
-# Compare
-diff values.default.yaml values.yaml |grep -- '>'
-
-# Generate declared state : K8s manifest (YAML)
-helm template $release $repo/$chart --version $ver -n $ns \
-    --values $values \
-    --set runnerToken="$(<$secret.key)" \
-    |tee helm.template.yaml
-
-# Install/Upgrade
-helm upgrade $release $repo/$chart --install --version $ver -n $ns \
-    --create-namespace \
-    --values $values \
-    --set runnerToken="$(<$secret.key)" \
-    --debug \
-    --atomic \
-    --timeout 2m \
-    |tee helm.upgrade.log
-
-# Capture the running state
-helm get manifest $release -n $ns |tee helm.manifest.yaml
-
-# Compare declared v. running
-diff helm.template.yaml helm.manifest.yaml
-
-```
-- [`helm.template.yaml`](helm.template.yaml)
-
-
-Logs
-
-```bash
-☩ k logs pod/gitlab-runner-dff845bf9-2g7x8 -f
-Registration attempt 1 of 30
-...
-Runner registered successfully. ...
-...
-
-```
-
-App
-
-```bash
-☩ k get $all -l app=gitlab-runner
-NAME                                           CREATED AT
-role.rbac.authorization.k8s.io/gitlab-runner   2025-09-27T18:04:20Z
-
-NAME                                                  ROLE                 AGE
-rolebinding.rbac.authorization.k8s.io/gitlab-runner   Role/gitlab-runner   9m38s
-
-NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/gitlab-runner   1/1     1            1           9m38s
-
-NAME                                 READY   STATUS    RESTARTS   AGE
-pod/gitlab-runner-86d4977ff7-xjwmm   1/1     Running   0          6m
-
-NAME                      DATA   AGE
-configmap/gitlab-runner   6      9m38s
-
-NAME                   TYPE     DATA   AGE
-secret/gitlab-runner   Opaque   2      9m38s
-```
-
-### [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
+@ `.gitlab-ci.yml`
 
 ```yaml
-  config.template.toml:   |
-    [[runners]]
-      # Per-job (ephemeral) runners 
-      [runners.kubernetes]
-        service_account = "gitlab-runner"
-        namespace = "glr-jobs"
-
-        cpu_request = "100m"
-        memory_request = "128Mi"
-        cpu_limit = "1"
-        memory_limit = "512Mi"
-
-        helper_memory_limit = "250Mi"
-        helper_memory_request = "250Mi"
-        helper_memory_limit_overwrite_max_allowed = "1Gi"
-
+before_script:
+  - |
+    echo "=== Pipeline Trigger Information ==="
+    echo "Triggered by: $GITLAB_USER_NAME ($GITLAB_USER_EMAIL)"
+    echo "User ID: $GITLAB_USER_ID"
+    echo "Pipeline: $CI_PIPELINE_ID"
+    echo "Job: $CI_JOB_NAME"
+    echo "====================================="
 ```
-- Limits for helper:
-    - Workloads with caching/artifact generation: Minimum __`250 MiB`__
-    - Basic workloads sans cache/artifacts: Might work with lower limits (128-200 MiB)
+
+#### Security Context
+
+While you can identify the GitLab user, 
+the SSH executor runs as the configured SSH user __regardless of who triggered the pipeline__. 
+
+This means:
+
+- All users share the same system-level permissions on the runner host.
+- Cannot enforce user-specific system permissions at the OS level.
+- Auditing must happen through GitLab's pipeline logs, not system log.
+
+## [`[runners.kubernetes]`](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runnerskubernetes-section)
+
+- [Helper image](https://docs.gitlab.com/runner/configuration/advanced-configuration/#helper-image) handles Git, artifacts, and cache operations. Override default helper image by setting `runners.kubernetes.helper_image` key. Default helper image is set according to (main) runner image name, variant, version and arch.
+
+- [`[runners.custom_build_dir]`](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runnerscustom_build_dir-section) is __enabled by default__ if `executor` is `kubernetes`. 
+It requires that `GIT_CLONE_PATH` is in a path defined in `runners.builds_dir`. 
+To use the `builds_dir`, use the `$CI_BUILDS_DIR` variable.
+
+## [Helm chart : How To](https://docs.gitlab.com/runner/install/kubernetes/)
+
+### [`make.gitlab-runner.sh`](make.gitlab-runner.sh)
+
+```bash
+bash make.gitlab-runner.sh up
+```
+
+### [`values.diff.yaml.tpl`](values.diff.yaml.tpl) | [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
 
 
-
-## Create a New Runner
+## @ GitLab host : Create a New Runner
 
 At left-side menu:
 
@@ -189,60 +95,285 @@ gitlab-runner run
 This may not be needed if you manage your runner as a system or user service .
 ```
 
-Create K8s Secret `data.runner-token` expected by Helm chart
-
-```bash
-ns=glr-manager
-secret=glrt-secret
-tkn="$(<$secret.key)"
-
-# Case 1. gitlab-runner on host
-type gitlab-runner &&
-    gitlab-runner register --url https://gitlab.com  --token $tkn
-
-# Case 2. gitlab-runner on K8s
-kubectl create ns $ns
-kubectl create secret generic glrt-secret \
-    --from-literal=runner-token="$tkn" \
-    -n $ns
-
-# Verify
-kubectl -n $ns get secret glrt-secret -o jsonpath='{.data.runner-token}' |base64 -d
-
-# Inject into values.yaml (idempotent) : No such key in this chart version
-#sed -i 's/runnerTokenSecret: ""/runnerTokenSecret: "'$secret'"/' values.yaml
-
-```
-
 Inject secret at runtime using `--set` override
 
 ```bash
 helm upgrade ... --set runnerToken="$(<$secret.key)"
 ```
 
-## Project `cicd-test`
 
-Success at CI Job requesting protected Job endpoint !
+## Storage Isolation 
 
-@ `.gitlab-ci.yml`
+Regarding GitLab CI pipelines having a kubernetes executor configured for default `/build` and `/cache` locations, __filesystem and build isolation__ must be managed at pipeline definition, `.gitlab-ci.yml`, if concurrent jobs per runner are allowed, else &hellip;
+
+__Problem__:
+
+- `/builds`: By default, this is a Persistent Volume Claim (PVC) shared by all jobs on the runner. Concurrent jobs will have their project directories created here (e.g., `/builds/group-name/project-name/`). If _two jobs from the same project_ run concurrently, they will likely _clone into the same directory_, causing corruption.
+- `/cache`: This is also a shared PVC. If concurrent jobs read from and write to the cache simultaneously, you can experience race conditions, corrupted cache archives, or jobs using incomplete cache.
+
+### 1. K8s Infra Level
+
+__Pre-allocate__ the per-concurrency volumes (__`builds-pvc-*`__).
+
+Create the PVC/PV resources ___before___ __configuring runner__.
+
+@ `pvc.yaml`
 
 ```yaml
-default:
-  image: badouralix/curl-jq
-  tags:
-    - k8s1
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: builds-pvc-0
+  namespace: ci-jobs
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: fast-ssd  # ← Storage class here
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: builds-pvc-1
+  namespace: ci-jobs
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: fast-ssd  # ← Same storage class
+  resources:
+    requests:
+      storage: 20Gi
+```
+- Dynamic provisioner, so PV created upon PVC creation.
+    - Want : "`reclaimPolicy: Delete`", else `Recycle`  
+      See "`kubectl explain sc.reclaimPolicy`"
 
-stages:
-  - test
+```toml
+# Max number of jobs a single runner process can handle simultaneously
+concurrent = 4 # Each requires a PVC/PV pair.
 
-test-job:
-  stage: test
-  script: |
-    url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines/${CI_PIPELINE_ID}/jobs"
-    echo URL - $url
-    echo CI_JOB_TOKEN - $CI_JOB_TOKEN
-    curl --fail --show-error --silent --header "JOB-TOKEN: ${CI_JOB_TOKEN}" "$url" | jq . 
+[[runners]]
+  builds_dir = "/mnt/builds"
+  cache_dir = "/mnt/cache"
+
+  # This block is not required if executor = kubernetes
+  [runners.custom_build_dir]
+    enabled = true
+
+  [runners.kubernetes]
+    limit = 4 # Concurrency per runner; cannot exceed global concurrent 
+    [[runners.kubernetes.volumes.pvc]]
+      # Requires StorageClass providing DYNAMIC PROVISIONING
+      name = "builds-pvc-$CI_CONCURRENT_ID" 
+      mount_path = "/mnt/builds"
+
+    [[runners.kubernetes.volumes.pvc]]  
+      #name = "cache-pvc-$CI_CONCURRENT_ID"
+      name = "shared-cache-pvc" # Shared across concurrency
+      mount_path = "/mnt/cache"
+      storage_class = "fast-ssd"
+      storage_size = "20Gi"
+
+```
+- Enable long polling at `/etc/gitlab/gitlab.rb`
+  - `gitlab_workhorse['api_ci_long_polling_duration'] = "30s"`
+
+### `/builds`
+
+- Purpose: Where project source code is cloned and built
+- Contains: Git repositories, build artifacts, temporary files
+- __Isolation__: Critical for __concurrent jobs__
+
+### `/cache`
+
+- Purpose: Where pipeline caches are stored between jobs
+- Contains: Dependency caches (`pip`, `npm`, etc.), build caches
+- __Isolation__: __Per-project/branch__ cache isolation
+
+
+### 2. GitLab Logic Level
+
+Job definition has associated isoluation scheme
+
+```yaml
+cache:
+  key: "$CI_COMMIT_REF_SLUG"  # ← Logical isolation
+  paths:
+    - node_modules/
+    - .cache/
+```
+- __Dynamic cache__ keys __per project__/__branch__/__MR__
+- Logical isolation - different projects/branches don't share cache
+- Unlimited combinations - automatically managed by GitLab
+
+### How (1.) + (2.) work together
+
+```
+Physical Layer (K8s PVCs):
+build-pvc-0 → /builds/ (Job 1 running)
+build-pvc-1 → /builds/ (Job 2 running) 
+build-pvc-2 → /builds/ (Job 3 running)
+build-pvc-3 → /builds/ (Job 4 running)
+
+Logical Layer (GitLab Cache):
+/builds/project-123/main/.cache/     (on build-pvc-0)
+/builds/project-123/feature/.cache/  (on build-pvc-1) 
+/builds/project-456/main/.cache/     (on build-pvc-2)
+/builds/project-123/main/.cache/     (on build-pvc-3) ← Same logical cache, different physical slot!
+```
+
+Without isolation at the gitlab-runner TOML definition, 
+we can do this at `.gitlab-ci.yml`
+
+```yaml
+job_a:
+  variables:
+    GIT_CLONE_PATH: $CI_BUILDS_DIR/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME-$CI_JOB_NAME
+  cache:
+    key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+    paths:
+      - node_modules/
+  script:
+    - echo "This job clones into a unique directory."
+
+job_b:
+  variables:
+    GIT_CLONE_PATH: $CI_BUILDS_DIR/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME-$CI_JOB_NAME
+  cache:
+    key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+    paths:
+      - node_modules/
+  script:
+    - echo "So does this one, avoiding conflicts with job_a."
+```
+
+### Repo Size per Clone depth
+
+Default for GitLab runner is   
+"`git clone --depth 50 $url`"
+
+```bash
+# 1. Generate single-file *.bundle of various depths
+git bundle create full.bundle --all
+git bundle create depth-50.bundle --all --depth=50
+git bundle create depth-1.bundle --all --depth=1
+# 2. Then compare their sizes
+#find -name '*.bundle' -printf "%k\t%P\n"
+ls -hl *.bundle
+```
+
+### Runners per Job Size
+
+```toml
+# Runner for lightweight jobs
+[[runners]]
+  name = "small-jobs"
+  token = "token-small"
+  limit = 8  # Can handle many small jobs
+  tag_list = ["small", "test"]
+
+# Runner for heavyweight jobs
+[[runners]]
+  name = "large-jobs" 
+  token = "token-large"
+  limit = 2  # Only 2 large jobs at once
+  tag_list = ["large", "build"]
+```
+
+### `ResourceQuota` Management
+
+CI/CD Jobs namespace should differ from that of 
+the deployed applications built by those CI/CD pipelines.
+
+```yaml
+---
+# CI namespace - limit runner resources
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gitlab-runner-quota
+  namespace: gitlab-ci
+spec:
+  hard:
+    pods: "20"
+    limits.cpu: "16"
+    limits.memory: "32Gi"
+---
+# App namespace - separate quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: app-production-quota
+  namespace: my-app-production
+spec:
+  hard:
+    pods: "50"
+    limits.cpu: "32"
+    limits.memory: "64Gi"
+```
+
+### RBAC Isolation
+
+```yaml
+---
+# GitLab Runner has limited permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: gitlab-ci
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/exec"]
+  verbs: ["get", "list", "create", "delete"]
+---
+# App namespace has different permissions  
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: my-app-production
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "create", "patch"]
+```
+
+
+## [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner) | [Releases](https://gitlab.com/gitlab-org/gitlab-runner/-/releases)
+
+
+### Images
+
+Helm chart does not reference the helper.   
+Rather, automatically pulls that matching runner
+
+```bash
+version=17.11.3
+arch=x86_64
+
+runner=gitlab-org/gitlab-runner:v$version
+helper=gitlab-org/gitlab-runner/gitlab-runner-helper:${arch}-v${version}
+
+```
+### GitLab Container Registry
+
+- [Base images](https://gitlab.com/gitlab-org/ci-cd/runner-tools/base-images/-/tree/main/dockerfiles/runner)
+    - [`registry.gitlab.com/gitlab-org/gitlab-runner`](https://gitlab.com/gitlab-org/gitlab-runner/container_registry)
+    - [`registry.gitlab.com/gitlab-org/ci-cd/runner-tools`](https://gitlab.com/gitlab-org/ci-cd/runner-tools)
+
+&nbsp;
+
+```bash
+☩ dit
+IMAGE ID       REPOSITORY:TAG                                                                                 SIZE
+02c727a1f782   registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:alpine3.21-x86_64-v17.11.3   90.9MB
+d29f67270c65   registry.gitlab.com/gitlab-org/gitlab-runner:alpine3.21-v17.11.3                               198MB
+```
+```bash
+img=registry.gitlab.com/gitlab-org/gitlab-runner:alpine3.21-v17.11.3
+trivy image --scanners vuln --severity CRITICAL,HIGH $img
 
 ```
 
-See [`cicd-test.jobs.11523146153.log`](cicd-test/cicd-test.jobs.11523146153.log)
+
+

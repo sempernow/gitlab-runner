@@ -100,3 +100,29 @@ subjects:
 - kind: ServiceAccount
   name: "glr-jobs-sa"
   namespace: "glr-jobs"
+
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: healthz-reader
+rules:
+- nonResourceURLs: ["/healthz", "/livez", "/readyz"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: healthz-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: healthz-reader
+subjects:
+- kind: ServiceAccount
+  name: "glr-jobs-sa"
+  namespace: "glr-jobs"
+- kind: ServiceAccount
+  name: "glr-manager-sa"
+  namespace: "glr-manager"
