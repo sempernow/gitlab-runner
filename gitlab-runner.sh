@@ -17,8 +17,7 @@ runner=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner:$GLR_IMAGE_TAG
 helper=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner/gitlab-runner-helper:${variant}-${arch}-v$version
 
 scan(){
-    type -t trivy ||
-        return 1
+    type -t trivy || return 1
 
     trivy image --scanners vuln --severity CRITICAL,HIGH $runner |
         tee trivy.runner.cve.log
@@ -37,7 +36,7 @@ ver=0.76.3 # See search() for runner version per chart version
 ns=$GLR_MANAGER
 release=$chart
 values=values.diff.yaml
-secret=glrt-secret
+secret=glrt-secret # GLR Authentication Token
 
 export GLR_RBAC=rbac.$release.yaml
 
@@ -60,6 +59,38 @@ prep(){
 }
 
 tkn(){
+    # This manages GLR Authentication Token (glrt-*) required for TOML config, 
+    # not the GLR Registration Token (GL*).
+
+    gid(){
+        # GET group ($1) ID 
+        [[ $1 ]] || return 1
+        pat="$(agede glpat.key.age)" || return 2
+        url=https://$GLR_HOST/api/v4/groups
+        curl -sfX GET -H "PRIVATE-TOKEN: $pat" "$url" |
+            jq -Mr '. | map(select(.name == "'$1'")) | .[].id'
+    }
+
+    rotateAuthTkn(){
+        # UNTESTED
+        gid="$(gid)" || return 1
+        pat="$(agede glpat.key.age)" || return 2
+        url=https://$GLR_HOST/api/v4/runners
+        rid="$(curl -sfX GET -H "PRIVATE-TOKEN: $pat" "$url" |jq -Mr .[].id)" || return $?
+        url=https://$GLR_HOST/api/v4/groups/$gid/runners/$rid/reset_authentication_token
+        curl -sfX POST -H "PRIVATE-TOKEN: $pat" "$url"
+    }
+    
+    rotateRegTkn(){
+        # UNTESTED
+        pat="$(agede glpat.key.age)" || return 1
+        tkn="$(agede gr-registration-tkn.key.age)" || return 2
+        url=https://$GLR_HOST/api/v4/runners?token=$tkn
+        curl -sfX DELETE -H "PRIVATE-TOKEN: $pat" "$url" || return $?
+        url=https://$GLR_HOST/api/v4/groups/$gid/runners/reset_registration_token
+        curl -sfX POST -H "PRIVATE-TOKEN: $pat" "$url"
+    }
+
     secure(){
         [[ -f $secret.key.age ]] && {
             echo "EXISTS already"
@@ -81,8 +112,7 @@ tkn(){
     }
 
     provision(){
-        tkn="$(get)" ||
-            return $?
+        tkn="$(get)" || return 1
         
         # Case 1. gitlab-runner on host
         type gitlab-runner &&
@@ -100,15 +130,14 @@ tkn(){
             base64 -d
     }
 
-    [[ $1 ]] || { type $FUNCNAME; return 0; }
+    [[ $1 ]] || { type $FUNCNAME; return; }
     "$@"
 }
 
 template(){
     envsubst < $values.tpl > $values
 
-    tkn="$(tkn get)" ||
-        return 1
+    tkn="$(tkn get)" || return 1
 
     # Generate declared state (YAML) at current $values
     helm template $release $repo/$chart --version $ver -n $ns \
@@ -132,10 +161,9 @@ rbac(){
 
 up(){
     # Install/Upgrade
-    tkn="$(tkn get)" ||
-        return 1
+    tkn="$(tkn get)" || return 1
 
-    rbac
+    rbac || return 2
    
     # Install/Upgrade the chart
     helm upgrade $release $repo/$chart --install --version $ver -n $ns \
