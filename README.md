@@ -38,69 +38,7 @@ trivy image --scanners vuln --severity CRITICAL,HIGH $img
 
 ### [Helm chart : How To](https://docs.gitlab.com/runner/install/kubernetes/)
 
-```bash
-repo=gitlab
-chart=gitlab-runner
-ver=0.76.3 # runner: v17.11.3
-ns=glr-manager # gitlab-runner : Controller only
-release=$chart
-values=values.yaml
-secret=glrt-secret
-tkn="$(<$secret.key)"
-
-# Instead of this, add token secret at helm upgrade using --set method
-# kubectl create ns $ns
-# kubectl create secret generic $secret \
-#     --from-literal=runner-token="$tkn" \
-#     -n $ns
-
-# Apply RBAC for both Manager and Jobs
-kubectl apply -f rbac.$release.yaml
-
-# Add repo
-helm repo update $repo ||
-    helm repo update $repo
-
-# Available versions : chart vs. runner
-helm search repo -l $repo/$chart
-
-# Pull chart to extract values.yaml
-helm pull $repo/$chart --version $ver &&
-    tar -xaf ${chart}-$ver.tgz &&
-        cp gitlab-runner/values.yaml values.default.yaml &&
-            rm ${chart}-$ver.tgz
-
-# Mod : Keep only the modified sections 
-vi $values
-
-# Compare
-diff values.default.yaml values.yaml |grep -- '>'
-
-# Generate declared state : K8s manifest (YAML)
-helm template $release $repo/$chart --version $ver -n $ns \
-    --values $values \
-    --set runnerToken="$(<$secret.key)" \
-    |tee helm.template.yaml
-
-# Install/Upgrade
-helm upgrade $release $repo/$chart --install --version $ver -n $ns \
-    --create-namespace \
-    --values $values \
-    --set runnerToken="$(<$secret.key)" \
-    --debug \
-    --atomic \
-    --timeout 2m \
-    |tee helm.upgrade.log
-
-# Capture the running state
-helm get manifest $release -n $ns |tee helm.manifest.yaml
-
-# Compare declared v. running
-diff helm.template.yaml helm.manifest.yaml
-
-```
-- [`helm.template.yaml`](helm.template.yaml)
-
+#### [`gitlab-runner.sh`](gitlab-runner.sh)
 
 Logs
 
@@ -138,29 +76,6 @@ secret/gitlab-runner   Opaque   2      9m38s
 
 ### [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
 
-```yaml
-  config.template.toml:   |
-    [[runners]]
-      # Per-job (ephemeral) runners 
-      [runners.kubernetes]
-        service_account = "gitlab-runner"
-        namespace = "glr-jobs"
-
-        cpu_request = "100m"
-        memory_request = "128Mi"
-        cpu_limit = "1"
-        memory_limit = "512Mi"
-
-        helper_memory_limit = "250Mi"
-        helper_memory_request = "250Mi"
-        helper_memory_limit_overwrite_max_allowed = "1Gi"
-
-```
-- Limits for helper:
-    - Workloads with caching/artifact generation: Minimum __`250 MiB`__
-    - Basic workloads sans cache/artifacts: Might work with lower limits (128-200 MiB)
-
-
 
 ## Create a New Runner
 
@@ -189,60 +104,8 @@ gitlab-runner run
 This may not be needed if you manage your runner as a system or user service .
 ```
 
-Create K8s Secret `data.runner-token` expected by Helm chart
-
-```bash
-ns=glr-manager
-secret=glrt-secret
-tkn="$(<$secret.key)"
-
-# Case 1. gitlab-runner on host
-type gitlab-runner &&
-    gitlab-runner register --url https://gitlab.com  --token $tkn
-
-# Case 2. gitlab-runner on K8s
-kubectl create ns $ns
-kubectl create secret generic glrt-secret \
-    --from-literal=runner-token="$tkn" \
-    -n $ns
-
-# Verify
-kubectl -n $ns get secret glrt-secret -o jsonpath='{.data.runner-token}' |base64 -d
-
-# Inject into values.yaml (idempotent) : No such key in this chart version
-#sed -i 's/runnerTokenSecret: ""/runnerTokenSecret: "'$secret'"/' values.yaml
-
-```
-
 Inject secret at runtime using `--set` override
 
 ```bash
 helm upgrade ... --set runnerToken="$(<$secret.key)"
 ```
-
-## Project `cicd-test`
-
-Success at CI Job requesting protected Job endpoint !
-
-@ `.gitlab-ci.yml`
-
-```yaml
-default:
-  image: badouralix/curl-jq
-  tags:
-    - k8s1
-
-stages:
-  - test
-
-test-job:
-  stage: test
-  script: |
-    url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines/${CI_PIPELINE_ID}/jobs"
-    echo URL - $url
-    echo CI_JOB_TOKEN - $CI_JOB_TOKEN
-    curl --fail --show-error --silent --header "JOB-TOKEN: ${CI_JOB_TOKEN}" "$url" | jq . 
-
-```
-
-See [`cicd-test.jobs.11523146153.log`](cicd-test/cicd-test.jobs.11523146153.log)
