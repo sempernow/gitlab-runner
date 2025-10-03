@@ -62,15 +62,16 @@ creds(){
     # Configure runner for AuthN against docker.io
 
     # 1. Create Secret (if not exist)
-    secret=docker-hub-secret
     user=gd9h
+    docker_pat_pem=docker.hub.credentials_gd9h.age
+    secret=docker-hub-secret
     kubectl get secret $secret >/dev/null 2>&1 || {
-        pass="$(agede docker.hub.credentials_gd9h.age)"
+        pass="$(agede $docker_pat_pem)"
         kubectl create secret docker-registry $secret \
             --docker-server=index.docker.io \
             --docker-username=$user \
             --docker-password="$pass" \
-            --namespace=glr-jobs
+            --namespace=$GLR_JOBS
     }
     ## 2. Modifiy values file
     echo "🚧 Insert 'image_pull_secrets' declaration into runners.config of '$values' file :"
