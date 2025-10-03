@@ -2,6 +2,126 @@
 # [`gitlab-runner` on K8S](https://docs.gitlab.com/runner/install/kubernetes/)
 
 
+## Storage Isolation 
+
+### 1. K8s Infra Level
+
+__Pre-allocate__ the per-concurrency volumes (__`builds-pvc-*`__).
+
+Create the PVC/PV resources ___before___ __configuring runner__.
+
+@ `pvc.yaml`
+
+```yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: builds-pvc-0
+  namespace: ci-jobs
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: fast-ssd  # ← Storage class here
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: builds-pvc-1
+  namespace: ci-jobs
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: fast-ssd  # ← Same storage class
+  resources:
+    requests:
+      storage: 20Gi
+```
+- Dynamic provisioner, so PV created upon PVC creation.
+    - Want : "`reclaimPolicy: Delete`", else `Recycle`  
+      See "`kubectl explain sc.reclaimPolicy`"
+
+```toml
+concurrent = 4 # Each requires a PVC/PV pair.
+
+[[runners]]
+  builds_dir = "/mnt/builds"
+  cache_dir = "/mnt/cache"
+  
+  [runners.kubernetes]
+    [[runners.kubernetes.volumes.pvc]]
+      name = "builds-pvc-$CI_CONCURRENT_ID"
+      mount_path = "/mnt/builds"
+
+    [[runners.kubernetes.volumes.pvc]]  
+      #name = "cache-pvc-$CI_CONCURRENT_ID"
+      name = "shared-cache-pvc" # Shared across concurrency
+      mount_path = "/mnt/shared-cache"
+      storage_class = "fast-ssd"
+      storage_size = "20Gi"
+
+```
+
+### `/builds`
+
+- Purpose: Where project source code is cloned and built
+- Contains: Git repositories, build artifacts, temporary files
+- __Isolation__: Critical for __concurrent jobs__
+
+### `/cache`
+
+- Purpose: Where pipeline caches are stored between jobs
+- Contains: Dependency caches (`pip`, `npm`, etc.), build caches
+- __Isolation__: __Per-project/branch__ cache isolation
+
+
+### 2. GitLab Logic Level
+
+Job definition has associated isoluation scheme
+
+```yaml
+cache:
+  key: "$CI_COMMIT_REF_SLUG"  # ← Logical isolation
+  paths:
+    - node_modules/
+    - .cache/
+```
+- __Dynamic cache__ keys __per project__/__branch__/__MR__
+- Logical isolation - different projects/branches don't share cache
+- Unlimited combinations - automatically managed by GitLab
+
+### How (1.) + (2.) work together
+
+```
+Physical Layer (K8s PVCs):
+build-pvc-0 → /builds/ (Job 1 running)
+build-pvc-1 → /builds/ (Job 2 running) 
+build-pvc-2 → /builds/ (Job 3 running)
+build-pvc-3 → /builds/ (Job 4 running)
+
+Logical Layer (GitLab Cache):
+/builds/project-123/main/.cache/     (on build-pvc-0)
+/builds/project-123/feature/.cache/  (on build-pvc-1) 
+/builds/project-456/main/.cache/     (on build-pvc-2)
+/builds/project-123/main/.cache/     (on build-pvc-3) ← Same logical cache, different physical slot!
+```
+
+### Repo Size per Clone depth
+
+Default for GitLab runner is   
+"`git clone --depth 50 $url`"
+
+```bash
+# 1. Generate single-file *.bundle of various depths
+git bundle create full.bundle --all
+git bundle create depth-50.bundle --all --depth=50
+git bundle create depth-1.bundle --all --depth=1
+# 2. Then compare their sizes
+#find -name '*.bundle' -printf "%k\t%P\n"
+ls -hl *.bundle
+```
+
 ## [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner) | [Releases](https://gitlab.com/gitlab-org/gitlab-runner/-/releases)
 
 

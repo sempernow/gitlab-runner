@@ -61,23 +61,27 @@ prep(){
 creds(){
     # Configure runner for AuthN against docker.io
 
-    # Create Secret
+    # 1. Create Secret (if not exist)
+    secret=docker-hub-secret
     user=gd9h
-    pass="$(agede docker.hub.credentials_gd9h.age)"
-    kubectl create secret docker-registry docker-hub-secret \
-        --docker-server=index.docker.io \
-        --docker-username=$user \
-        --docker-password="$pass" \
-        --namespace=glr-jobs
-
-    ## Modifiy values file
-    # [[runners]]
-    # name = "Kubernetes Runner"
-    # [runners.kubernetes]
-    #   namespace = "glr-jobs"
-    #   image_pull_secrets = ["docker-hub-secret"]
-    #   poll_timeout = 600
-
+    kubectl get secret $secret >/dev/null 2>&1 || {
+        pass="$(agede docker.hub.credentials_gd9h.age)"
+        kubectl create secret docker-registry $secret \
+            --docker-server=index.docker.io \
+            --docker-username=$user \
+            --docker-password="$pass" \
+            --namespace=glr-jobs
+    }
+    ## 2. Modifiy values file
+    echo "🚧 Insert 'image_pull_secrets' declaration into runners.config of '$values' file :"
+    echo "
+    [[runners]]
+    ...
+      [runners.kubernetes]
+        namespace = "$GLR_JOBS"
+        image_pull_secrets = ["$secret"]
+        poll_timeout = 600
+    "
 }
 tkn(){
     # This manages GLR Authentication Token (glrt-*) required for TOML config, 
