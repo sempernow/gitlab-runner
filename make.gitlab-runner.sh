@@ -226,6 +226,13 @@ down(){
         kubectl delete ns $GLR_MANAGER $GLR_JOBS
 }
 
+push(){
+  type -t md2html.exe &&
+      find . -type f -iname '*.md' -exec md2html.exe {} \;
+  
+  find . -type f ! -path '*/.git/*' -exec chmod 644 {} \;
+  gc;git push      
+}
 [[ $1 ]] || { cat $BASH_SOURCE; exit 1; }
 
 "$@" || echo "❌ ERR : $? at '${BASH_SOURCE##*/} $@'"

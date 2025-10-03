@@ -1,6 +1,12 @@
 
 # [`gitlab-runner` on K8S](https://docs.gitlab.com/runner/install/kubernetes/)
 
+
+## [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner) | [Releases](https://gitlab.com/gitlab-org/gitlab-runner/-/releases)
+
+
+### Images
+
 Helm chart does not reference the helper.   
 Rather, automatically pulls that matching runner
 
@@ -12,7 +18,6 @@ runner=gitlab-org/gitlab-runner:v$version
 helper=gitlab-org/gitlab-runner/gitlab-runner-helper:${arch}-v${version}
 
 ```
-
 ### GitLab Container Registry
 
 - [Base images](https://gitlab.com/gitlab-org/ci-cd/runner-tools/base-images/-/tree/main/dockerfiles/runner)
@@ -33,51 +38,19 @@ trivy image --scanners vuln --severity CRITICAL,HIGH $img
 
 ```
 
-## [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner) | [Releases](https://gitlab.com/gitlab-org/gitlab-runner/-/releases)
 
+## [Helm chart : How To](https://docs.gitlab.com/runner/install/kubernetes/)
 
-### [Helm chart : How To](https://docs.gitlab.com/runner/install/kubernetes/)
-
-#### [`gitlab-runner.sh`](gitlab-runner.sh)
-
-Logs
+### [`make.gitlab-runner.sh`](make.gitlab-runner.sh)
 
 ```bash
-☩ k logs pod/gitlab-runner-dff845bf9-2g7x8 -f
-Registration attempt 1 of 30
-...
-Runner registered successfully. ...
-...
-
+bash make.gitlab-runner.sh up
 ```
 
-App
-
-```bash
-☩ k get $all -l app=gitlab-runner
-NAME                                           CREATED AT
-role.rbac.authorization.k8s.io/gitlab-runner   2025-09-27T18:04:20Z
-
-NAME                                                  ROLE                 AGE
-rolebinding.rbac.authorization.k8s.io/gitlab-runner   Role/gitlab-runner   9m38s
-
-NAME                            READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/gitlab-runner   1/1     1            1           9m38s
-
-NAME                                 READY   STATUS    RESTARTS   AGE
-pod/gitlab-runner-86d4977ff7-xjwmm   1/1     Running   0          6m
-
-NAME                      DATA   AGE
-configmap/gitlab-runner   6      9m38s
-
-NAME                   TYPE     DATA   AGE
-secret/gitlab-runner   Opaque   2      9m38s
-```
-
-### [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
+### [`values.diff.yaml.tpl`](values.diff.yaml.tpl) | [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
 
 
-## Create a New Runner
+## @ GitLab host : Create a New Runner
 
 At left-side menu:
 
