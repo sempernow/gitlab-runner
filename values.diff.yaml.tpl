@@ -25,11 +25,12 @@ runners:
 
       [runners.kubernetes]
         ## See $GLR_RBAC
-        service_account = "${GLR_JOBS}-sa"
-        namespace       = "$GLR_JOBS"
-        pull_policy     = "if-not-present"
-        privileged      = false
-        
+        service_account       = "${GLR_JOBS}-sa"
+        namespace             = "$GLR_JOBS"
+        privileged            = false
+        pull_policy           = "if-not-present"
+        image_pull_secrets    = ["docker-hub-secret"]
+
         cpu_request     = "100m"
         memory_request  = "128Mi"
         cpu_limit       = "500m"

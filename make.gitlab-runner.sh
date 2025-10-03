@@ -58,6 +58,27 @@ prep(){
                     return 1
 }
 
+creds(){
+    # Configure runner for AuthN against docker.io
+
+    # Create Secret
+    user=gd9h
+    pass="$(agede docker.hub.credentials_gd9h.age)"
+    kubectl create secret docker-registry docker-hub-secret \
+        --docker-server=index.docker.io \
+        --docker-username=$user \
+        --docker-password="$pass" \
+        --namespace=glr-jobs
+
+    ## Modifiy values file
+    # [[runners]]
+    # name = "Kubernetes Runner"
+    # [runners.kubernetes]
+    #   namespace = "glr-jobs"
+    #   image_pull_secrets = ["docker-hub-secret"]
+    #   poll_timeout = 600
+
+}
 tkn(){
     # This manages GLR Authentication Token (glrt-*) required for TOML config, 
     # not the GLR Registration Token (GL*).
@@ -134,17 +155,20 @@ tkn(){
     "$@"
 }
 
-template(){
+values(){
     envsubst < $values.tpl > $values
+}
 
-    tkn="$(tkn get)" || return 1
+template(){
+    values || return 1
+    tkn="$(tkn get)" || return 2
 
     # Generate declared state (YAML) at current $values
     helm template $release $repo/$chart --version $ver -n $ns \
         --values $values \
         --set runnerToken="$tkn" \
         |tee helm.template.yaml ||
-            return 2
+            return 3
 }
 
 rbac(){
@@ -183,14 +207,17 @@ manifest(){
 
 diffv(){
     diff values.yaml $values |grep -- '>'
+    return 0
 }
 
 diffs(){
     diff helm.template.yaml helm.manifest.yaml # declared v. running states
+    return 0
 }
 
 status(){
-    kubectl get ${all:-pod} -l app=gitlab-runner -A
+    kubectl get sa,ClusterRole,ClusterRoleBinding,${all:-pod} \
+        -l app=$release -A
 }
 
 down(){
