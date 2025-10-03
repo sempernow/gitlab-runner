@@ -4,5 +4,4 @@
 **/LOG.*
 **/cicd-test
 helm.*.yaml
-
-
+capture*.yaml
