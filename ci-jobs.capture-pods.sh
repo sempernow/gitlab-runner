@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
 NAMESPACE="${1:-glr-jobs}"
-manifests=captured_job_pods.yaml
+manifests=${BASH_SOURCE%%*/}.yaml
 
+echo $manifests
+exit
+
 kubectl get pods -n "$NAMESPACE" -w | while read line; do
   if [[ "$line" =~ "runner-" && "$line" =~ "Running" ]]; then
     POD_NAME=$(echo "$line" | awk '{print $1}')

@@ -6,6 +6,6 @@
 **/*.tar.gz
 **/*.log
 **/*.html
-**/captured*.yaml
+**/ci-jobs.capture*.yaml
 **/helm.*.yaml
 
