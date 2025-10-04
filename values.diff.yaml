@@ -1,6 +1,7 @@
 image:
   registry: registry.gitlab.com
-  image: gitlab-org/gitlab-runner
+  ## The default helper image is chosen by this (main) image name, variant, version, and arch.
+  image: gitlab-org/gitlab-runner 
   tag: alpine3.21-v17.11.3
 
 gitlabUrl: https://gitlab.com/

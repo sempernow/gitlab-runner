@@ -1,6 +1,7 @@
 image:
   registry: $GLR_IMAGE_REGISTRY
-  image: $GLR_IMAGE_REPO/gitlab-runner
+  ## The default helper image is chosen by this (main) image name, variant, version, and arch.
+  image: $GLR_IMAGE_REPO/gitlab-runner 
   tag: $GLR_IMAGE_TAG
 
 gitlabUrl: https://$GLR_HOST/
@@ -29,7 +30,7 @@ runners:
         namespace             = "$GLR_JOBS"
         privileged            = false
         pull_policy           = "if-not-present"
-        image_pull_secrets    = ["docker-hub-secret"]
+        image_pull_secrets    = ["$GLR_DOCKER_HUB_SECRET"]
 
         cpu_request     = "100m"
         memory_request  = "128Mi"

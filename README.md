@@ -1,6 +1,15 @@
 
 # [`gitlab-runner` on K8S](https://docs.gitlab.com/runner/install/kubernetes/)
 
+## [`[runners.kubernetes]`](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runnerskubernetes-section)
+
+- [Helper image](https://docs.gitlab.com/runner/configuration/advanced-configuration/#helper-image) handles Git, artifacts, and cache operations. Override default helper image by setting `runners.kubernetes.helper_image` key. Default helper image is set according to (main) runner image name, variant, version and arch.
+
+- [`[runners.custom_build_dir]`](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runnerscustom_build_dir-section) is __enabled by default__ if `executor` is `kubernetes`. 
+It requires that `GIT_CLONE_PATH` is in a path defined in `runners.builds_dir`. 
+To use the `builds_dir`, use the `$CI_BUILDS_DIR` variable.
+
+### [Advanced Configuration](https://docs.gitlab.com/runner/configuration/advanced-configuration/)
 
 ## Storage Isolation 
 

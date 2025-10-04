@@ -14,6 +14,8 @@ export GLR_IMAGE_TAG="${variant}-v$version"
 export GLR_IMAGE_REGISTRY='registry.gitlab.com'
 export GLR_IMAGE_REPO='gitlab-org'
 runner=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner:$GLR_IMAGE_TAG
+# Helper image name and params (variant, version, arch) must match those of runner, 
+# else declare custom image in the runner config (TOML) at key: runners.kubernetes.helper_image
 helper=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner/gitlab-runner-helper:${variant}-${arch}-v$version
 
 scan(){
@@ -30,6 +32,8 @@ scan(){
 export GLR_HOST='gitlab.com'
 export GLR_MANAGER='glr-manager'
 export GLR_JOBS='glr-jobs'
+export GLR_DOCKER_HUB_SECRET='docker-hub-secret'
+
 repo=gitlab
 chart=gitlab-runner
 ver=0.76.3 # See search() for runner version per chart version
@@ -64,7 +68,7 @@ creds(){
     # 1. Create Secret (if not exist)
     user=gd9h
     docker_pat_pem=docker.hub.credentials_gd9h.age
-    secret=docker-hub-secret
+    secret=$GLR_DOCKER_HUB_SECRET
     kubectl get secret $secret >/dev/null 2>&1 || {
         pass="$(agede $docker_pat_pem)"
         kubectl create secret docker-registry $secret \
