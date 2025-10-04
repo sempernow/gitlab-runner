@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 NAMESPACE="${1:-glr-jobs}"
-manifests=${BASH_SOURCE%%*/}.yaml
+manifests="${BASH_SOURCE%%*/}.$(date -Is).yaml"
+manifests="${manifests//:/.}"
 
 _ctrlC() {
     echo -e "\n  🔚 Manifests catpured to: $manifests"
