@@ -95,7 +95,7 @@ tkn(){
     gid(){
         # GET group ($1) ID 
         [[ $1 ]] || return 1
-        pat="$(agede glpat.key.age)" || return 2
+        pat="$(agede glpat.tkn.age)" || return 2
         url=https://$GLR_HOST/api/v4/groups
         curl -sfX GET -H "PRIVATE-TOKEN: $pat" "$url" |
             jq -Mr '. | map(select(.name == "'$1'")) | .[].id'
@@ -104,7 +104,7 @@ tkn(){
     rotateAuthTkn(){
         # UNTESTED
         gid="$(gid)" || return 1
-        pat="$(agede glpat.key.age)" || return 2
+        pat="$(agede glpat.tkn.age)" || return 2
         url=https://$GLR_HOST/api/v4/runners
         rid="$(curl -sfX GET -H "PRIVATE-TOKEN: $pat" "$url" |jq -Mr .[].id)" || return $?
         url=https://$GLR_HOST/api/v4/groups/$gid/runners/$rid/reset_authentication_token
@@ -113,8 +113,8 @@ tkn(){
     
     rotateRegTkn(){
         # UNTESTED
-        pat="$(agede glpat.key.age)" || return 1
-        tkn="$(agede gr-registration-tkn.key.age)" || return 2
+        pat="$(agede glpat.tkn.age)" || return 1
+        tkn="$(agede gr-registration-tkn.age)" || return 2
         url=https://$GLR_HOST/api/v4/runners?token=$tkn
         curl -sfX DELETE -H "PRIVATE-TOKEN: $pat" "$url" || return $?
         url=https://$GLR_HOST/api/v4/groups/$gid/runners/reset_registration_token
@@ -122,27 +122,28 @@ tkn(){
     }
 
     secure(){
-        [[ -f $secret.key.age ]] && {
+        [[ -f $secret.tkn.age ]] && {
             echo "EXISTS already"
             return 1
         }
-        [[ $1 ]] && printf "$1" > $secret.key ||
+        [[ $1 ]] && printf "$1" > $secret.tkn ||
             return 2
 
         type -t ageen &&
-            ageen $seret.key &&
-                rm $secret.key ||
+            ageen $seret.tkn &&
+                rm $secret.tkn ||
                     return 3
     }
 
     get(){
+        # Print the decrypted token
         type -t agede > /dev/null 2>&1 &&
-            agede $secret.key.age ||
+            agede $secret.tkn.age ||
                 return 1
     }
 
     peek(){
-        n=63
+        n=63 # Truncate : Remove the last n characters
         echo "  Declared: $(get |sed 's/.\{'$n'\}$/.../')"
         echo "   Running: $(
             kubectl get secret -n ${GLR_MANAGER} $release -o yaml |
