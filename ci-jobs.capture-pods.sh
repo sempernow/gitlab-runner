@@ -8,7 +8,7 @@ _ctrlC() {
     echo -e "\n  🔚 Manifests catpured to: $manifests"
     exit 0
 }
-trap _ctrlC SIGINT # Call _ctrlC when CTRL+C is detected.
+trap _ctrlC SIGINT # Call _ctrlC on INTerrupt SIGnal from keyboard (CTRL+C).
 
 kubectl get pods -n "$NAMESPACE" -w | while read line; do
     if [[ "$line" =~ "runner-" && "$line" =~ "Running" ]]; then
