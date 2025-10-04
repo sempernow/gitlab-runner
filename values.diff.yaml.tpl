@@ -19,10 +19,14 @@ serviceAccount:
 
 runners:
   config: |
+    ## The total number of concurrent jobs across all runners of this controller
+    concurrent  = 10
+
     [[runners]]
-      name      = "$GLR_JOBS"
-      url       = "https://$GLR_HOST/"
-      executor  = "kubernetes"
+      name        = "$GLR_JOBS"
+      url         = "https://$GLR_HOST/"
+      executor    = "kubernetes"
+      ## Authentication Token (obtained upon runner registration) is added by helm --set method
 
       [runners.kubernetes]
         ## See $GLR_RBAC

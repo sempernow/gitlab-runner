@@ -141,6 +141,17 @@ tkn(){
                 return 1
     }
 
+    peek(){
+        n=63
+        echo "  Declared: $(get |sed 's/.\{'$n'\}$/.../')"
+        echo "   Running: $(
+            kubectl get secret -n ${GLR_MANAGER} $release -o yaml |
+                yq .data.runner-token |
+                base64 -d |
+                sed 's/.\{'$n'\}$/.../'
+        )"
+    }
+
     provision(){
         tkn="$(get)" || return 1
         

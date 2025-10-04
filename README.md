@@ -9,7 +9,6 @@
 It requires that `GIT_CLONE_PATH` is in a path defined in `runners.builds_dir`. 
 To use the `builds_dir`, use the `$CI_BUILDS_DIR` variable.
 
-### [Advanced Configuration](https://docs.gitlab.com/runner/configuration/advanced-configuration/)
 
 ## Storage Isolation 
 
