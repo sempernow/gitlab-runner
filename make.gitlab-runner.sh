@@ -240,7 +240,7 @@ push(){
       find . -type f -iname '*.md' -exec md2html.exe {} \;
   
   find . -type f ! -path '*/.git/*' -exec chmod 644 {} \;
-  gc;git push      
+  gc;git push;gl;gs
 }
 [[ $1 ]] || { cat $BASH_SOURCE; exit 1; }
 
