@@ -248,11 +248,11 @@ down(){
 }
 
 push(){
-  type -t md2html.exe &&
-      find . -type f -iname '*.md' -exec md2html.exe {} \;
+    type -t md2html.exe &&
+        find . -type f -iname '*.md' -exec md2html.exe {} \;
   
-  find . -type f ! -path '*/.git/*' -exec chmod 644 {} \;
-  gc && git push && gl && gs
+    find . -type f ! -path '*/.git/*' -exec chmod 644 {} \;
+    gc && git push && gl && gs
 }
 [[ $1 ]] || { cat $BASH_SOURCE; exit 1; }
 
