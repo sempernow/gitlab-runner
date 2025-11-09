@@ -1,6 +1,8 @@
 
 # [`gitlab-runner` on K8S](https://docs.gitlab.com/runner/install/kubernetes/)
 
+## [GitLab Runners on RHEL](https://chat.deepseek.com/share/u6s8c9cy25pi4h51j1)
+
 ## [`[runners.kubernetes]`](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runnerskubernetes-section)
 
 - [Helper image](https://docs.gitlab.com/runner/configuration/advanced-configuration/#helper-image) handles Git, artifacts, and cache operations. Override default helper image by setting `runners.kubernetes.helper_image` key. Default helper image is set according to (main) runner image name, variant, version and arch.
@@ -9,8 +11,59 @@
 It requires that `GIT_CLONE_PATH` is in a path defined in `runners.builds_dir`. 
 To use the `builds_dir`, use the `$CI_BUILDS_DIR` variable.
 
+## [Helm chart : How To](https://docs.gitlab.com/runner/install/kubernetes/)
+
+### [`make.gitlab-runner.sh`](make.gitlab-runner.sh)
+
+```bash
+bash make.gitlab-runner.sh up
+```
+
+### [`values.diff.yaml.tpl`](values.diff.yaml.tpl) | [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
+
+
+## @ GitLab host : Create a New Runner
+
+At left-side menu:
+
+__Groups__ > `<select the group>` > __Build__ > __Runners__ > __Create group runner__ (button)
+
+Response page:
+
+```
+GitLab Runner must be installed before you can register a runner. How do I install GitLab Runner?
+
+Step 1
+Copy and paste the following command into your command line to register the runner.
+
+gitlab-runner register  --url https://gitlab.com  --token glrt-REDACTED
+ The runner authentication token glrt-REDACTED  displays here for a short time only. After you register the runner, this token is stored in the config.toml and cannot be accessed again from the UI.
+
+Step 2
+Choose an executor when prompted by the command line. Executors run builds in different environments. Not sure which one to select? 
+
+Step 3 (optional)
+Manually verify that the runner is available to pick up jobs.
+
+gitlab-runner run
+This may not be needed if you manage your runner as a system or user service .
+```
+
+Inject secret at runtime using `--set` override
+
+```bash
+helm upgrade ... --set runnerToken="$(<$secret.key)"
+```
+
 
 ## Storage Isolation 
+
+Regarding GitLab CI pipelines having a kubernetes executor configured for default `/build` and `/cache` locations, __filesystem and build isolation__ must be managed at pipeline definition, `.gitlab-ci.yml`, if concurrent jobs per runner are allowed, else &hellip;
+
+__Problem__:
+
+- `/builds`: By default, this is a Persistent Volume Claim (PVC) shared by all jobs on the runner. Concurrent jobs will have their project directories created here (e.g., `/builds/group-name/project-name/`). If _two jobs from the same project_ run concurrently, they will likely _clone into the same directory_, causing corruption.
+- `/cache`: This is also a shared PVC. If concurrent jobs read from and write to the cache simultaneously, you can experience race conditions, corrupted cache archives, or jobs using incomplete cache.
 
 ### 1. K8s Infra Level
 
@@ -51,25 +104,34 @@ spec:
       See "`kubectl explain sc.reclaimPolicy`"
 
 ```toml
+# Max number of jobs a single runner process can handle simultaneously
 concurrent = 4 # Each requires a PVC/PV pair.
 
 [[runners]]
   builds_dir = "/mnt/builds"
   cache_dir = "/mnt/cache"
-  
+
+  # This block is not required if executor = kubernetes
+  [runners.custom_build_dir]
+    enabled = true
+
   [runners.kubernetes]
+    limit = 4 # Concurrency per runner; cannot exceed global concurrent 
     [[runners.kubernetes.volumes.pvc]]
-      name = "builds-pvc-$CI_CONCURRENT_ID"
+      # Requires StorageClass providing DYNAMIC PROVISIONING
+      name = "builds-pvc-$CI_CONCURRENT_ID" 
       mount_path = "/mnt/builds"
 
     [[runners.kubernetes.volumes.pvc]]  
       #name = "cache-pvc-$CI_CONCURRENT_ID"
       name = "shared-cache-pvc" # Shared across concurrency
-      mount_path = "/mnt/shared-cache"
+      mount_path = "/mnt/cache"
       storage_class = "fast-ssd"
       storage_size = "20Gi"
 
 ```
+- Enable long polling at `/etc/gitlab/gitlab.rb`
+  - `gitlab_workhorse['api_ci_long_polling_duration'] = "30s"`
 
 ### `/builds`
 
@@ -115,6 +177,31 @@ Logical Layer (GitLab Cache):
 /builds/project-123/main/.cache/     (on build-pvc-3) ← Same logical cache, different physical slot!
 ```
 
+Without isolation at the gitlab-runner TOML definition, 
+we can do this at `.gitlab-ci.yml`
+
+```yaml
+job_a:
+  variables:
+    GIT_CLONE_PATH: $CI_BUILDS_DIR/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME-$CI_JOB_NAME
+  cache:
+    key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+    paths:
+      - node_modules/
+  script:
+    - echo "This job clones into a unique directory."
+
+job_b:
+  variables:
+    GIT_CLONE_PATH: $CI_BUILDS_DIR/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME-$CI_JOB_NAME
+  cache:
+    key: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+    paths:
+      - node_modules/
+  script:
+    - echo "So does this one, avoiding conflicts with job_a."
+```
+
 ### Repo Size per Clone depth
 
 Default for GitLab runner is   
@@ -129,6 +216,82 @@ git bundle create depth-1.bundle --all --depth=1
 #find -name '*.bundle' -printf "%k\t%P\n"
 ls -hl *.bundle
 ```
+
+### Runners per Job Size
+
+```toml
+# Runner for lightweight jobs
+[[runners]]
+  name = "small-jobs"
+  token = "token-small"
+  limit = 8  # Can handle many small jobs
+  tag_list = ["small", "test"]
+
+# Runner for heavyweight jobs
+[[runners]]
+  name = "large-jobs" 
+  token = "token-large"
+  limit = 2  # Only 2 large jobs at once
+  tag_list = ["large", "build"]
+```
+
+### `ResourceQuota` Management
+
+CI/CD Jobs namespace should differ from that of 
+the deployed applications built by those CI/CD pipelines.
+
+```yaml
+---
+# CI namespace - limit runner resources
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gitlab-runner-quota
+  namespace: gitlab-ci
+spec:
+  hard:
+    pods: "20"
+    limits.cpu: "16"
+    limits.memory: "32Gi"
+---
+# App namespace - separate quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: app-production-quota
+  namespace: my-app-production
+spec:
+  hard:
+    pods: "50"
+    limits.cpu: "32"
+    limits.memory: "64Gi"
+```
+
+### RBAC Isolation
+
+```yaml
+---
+# GitLab Runner has limited permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: gitlab-ci
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/exec"]
+  verbs: ["get", "list", "create", "delete"]
+---
+# App namespace has different permissions  
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: my-app-production
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "create", "patch"]
+```
+
 
 ## [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner) | [Releases](https://gitlab.com/gitlab-org/gitlab-runner/-/releases)
 
@@ -167,46 +330,4 @@ trivy image --scanners vuln --severity CRITICAL,HIGH $img
 ```
 
 
-## [Helm chart : How To](https://docs.gitlab.com/runner/install/kubernetes/)
 
-### [`make.gitlab-runner.sh`](make.gitlab-runner.sh)
-
-```bash
-bash make.gitlab-runner.sh up
-```
-
-### [`values.diff.yaml.tpl`](values.diff.yaml.tpl) | [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
-
-
-## @ GitLab host : Create a New Runner
-
-At left-side menu:
-
-__Groups__ > `<select the group>` > __Build__ > __Runners__ > __Create group runner__ (button)
-
-Response page:
-
-```
-GitLab Runner must be installed before you can register a runner. How do I install GitLab Runner?
-
-Step 1
-Copy and paste the following command into your command line to register the runner.
-
-gitlab-runner register  --url https://gitlab.com  --token glrt-REDACTED
- The runner authentication token glrt-REDACTED  displays here for a short time only. After you register the runner, this token is stored in the config.toml and cannot be accessed again from the UI.
-
-Step 2
-Choose an executor when prompted by the command line. Executors run builds in different environments. Not sure which one to select? 
-
-Step 3 (optional)
-Manually verify that the runner is available to pick up jobs.
-
-gitlab-runner run
-This may not be needed if you manage your runner as a system or user service .
-```
-
-Inject secret at runtime using `--set` override
-
-```bash
-helm upgrade ... --set runnerToken="$(<$secret.key)"
-```

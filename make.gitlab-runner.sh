@@ -5,10 +5,26 @@
 # https://gitlab.com/gitlab-org/gitlab-runner
 # https://docs.gitlab.com/runner/install/kubernetes/
 ######################################################
+# Chart params
+export GLR_HOST='gitlab.com'
+export GLR_MANAGER='glr-manager'
+export GLR_JOBS='glr-jobs'
+export GLR_DOCKER_HUB_SECRET='docker-hub-secret'
+
+repo=gitlab
+chart=gitlab-runner
+ver=0.76.3 # See search() for runner version per chart version
+ver=0.81.0 # App v18.4.0 : GitLab.com @ 18.6.0-pre
+ns=$GLR_MANAGER
+release=$chart
+values=values.diff.yaml
+secret=glrt-secret # GLR Authentication Token
+
+export GLR_RBAC=rbac.$release.yaml
 
 # Images
 variant=alpine3.21
-version=17.11.3
+version=18.4.0 # 17.11.3
 arch=x86_64
 export GLR_IMAGE_TAG="${variant}-v$version"
 export GLR_IMAGE_REGISTRY='registry.gitlab.com'
@@ -18,6 +34,7 @@ runner=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner:$GLR_IMAGE_TAG
 # else declare custom image in the runner config (TOML) at key: runners.kubernetes.helper_image
 helper=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner/gitlab-runner-helper:${variant}-${arch}-v$version
 
+pullRunner
 scan(){
     type -t trivy || return 1
 
@@ -28,21 +45,6 @@ scan(){
         tee trivy.helper.cve.log
 }
 
-# Chart params
-export GLR_HOST='gitlab.com'
-export GLR_MANAGER='glr-manager'
-export GLR_JOBS='glr-jobs'
-export GLR_DOCKER_HUB_SECRET='docker-hub-secret'
-
-repo=gitlab
-chart=gitlab-runner
-ver=0.76.3 # See search() for runner version per chart version
-ns=$GLR_MANAGER
-release=$chart
-values=values.diff.yaml
-secret=glrt-secret # GLR Authentication Token
-
-export GLR_RBAC=rbac.$release.yaml
 
 search(){
     # Available versions : chart v. runner
@@ -65,7 +67,7 @@ prep(){
 creds(){
     # Configure runner for AuthN against docker.io
 
-    # 1. Create Secret (if not exist)
+    # 1. Create Secret type docker-registry (if not exist)
     user=gd9h
     docker_pat_pem=docker.hub.credentials_gd9h.age
     secret=$GLR_DOCKER_HUB_SECRET
@@ -77,8 +79,10 @@ creds(){
             --docker-password="$pass" \
             --namespace=$GLR_JOBS
     }
+    kubectl -n $GLR_JOBS label secret $secret app=$release
+
     ## 2. Modifiy values file
-    echo "🚧 Insert 'image_pull_secrets' declaration into runners.config of '$values' file :"
+    echo "ℹ️ Insert 'image_pull_secrets' declaration into runners.config of '$values' file :"
     echo "
     [[runners]]
     ...
@@ -206,6 +210,8 @@ rbac(){
 
 up(){
     # Install/Upgrade
+    creds
+    values 
     tkn="$(tkn get)" || return 1
 
     rbac || return 2
