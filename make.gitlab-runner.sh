@@ -34,7 +34,11 @@ runner=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner:$GLR_IMAGE_TAG
 # else declare custom image in the runner config (TOML) at key: runners.kubernetes.helper_image
 helper=$GLR_IMAGE_REGISTRY/$GLR_IMAGE_REPO/gitlab-runner/gitlab-runner-helper:${variant}-${arch}-v$version
 
-pullRunner
+pullRunner(){
+    docker pull $runner 
+    docker pull $helper
+}
+
 scan(){
     type -t trivy || return 1
 
@@ -44,7 +48,6 @@ scan(){
     trivy image --scanners vuln --severity CRITICAL,HIGH $helper |
         tee trivy.helper.cve.log
 }
-
 
 search(){
     # Available versions : chart v. runner
@@ -92,6 +95,7 @@ creds(){
         poll_timeout = 600
     "
 }
+
 tkn(){
     # This manages GLR Authentication Token (glrt-*) required for TOML config, 
     # not the GLR Registration Token (GL*).
@@ -260,6 +264,7 @@ push(){
     find . -type f ! -path '*/.git/*' -exec chmod 644 {} \;
     gc && git push && gl && gs
 }
+
 [[ $1 ]] || { cat $BASH_SOURCE; exit 1; }
 
 "$@" || echo "❌ ERR : $? at '${BASH_SOURCE##*/} $@'"
