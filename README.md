@@ -1,7 +1,40 @@
-# [`gitlab-runner` on K8S](https://docs.gitlab.com/runner/install/kubernetes/)
 
-## [GitLab Runners on RHEL](https://chat.deepseek.com/share/u6s8c9cy25pi4h51j1)
+# [GitLab Runners on RHEL](https://chat.deepseek.com/share/u6s8c9cy25pi4h51j1)
 
+GitLab Runner Architecture
+
+    GitLab Server
+        |
+        | (API)
+        |
+    GitLab Runner Process (on remote host)
+        |
+        |-- Runner Instance 1 (shell) -- Token 1
+        |-- Runner Instance 2 (ssh) --- Token 2  
+        |-- Runner Instance 3 (docker) - Token 3
+        |-- Runner Instance 4 (ssh) --- Token 4
+
+
+## Register a host runner
+
+A runner may have __many executors__, 
+but each is registered (unique) at GtiLab host; 
+each has their own token.
+
+See [`config.toml.tpl`](config.toml.tpl)
+
+1. At GitLab host Web UI
+
+__Groups__ > `<select the group>` > __Build__ > __Runners__ > __Create group runner__ (button)
+
+Copy the token `glrt-REDACTED`
+
+2. At `gitlab-runner` host
+
+```bash
+glrt=glrt-REDACTED # Obtained from GitLab host
+gitlab-runner register  --url https://$GITLAB_HOST  --token $glrt
+```
 
 ### ssh executor
 
@@ -48,6 +81,11 @@ This means:
 - All users share the same system-level permissions on the runner host.
 - Cannot enforce user-specific system permissions at the OS level.
 - Auditing must happen through GitLab's pipeline logs, not system log.
+
+---
+
+# [`gitlab-runner` on K8S](https://docs.gitlab.com/runner/install/kubernetes/)
+
 
 ## [`[runners.kubernetes]`](https://docs.gitlab.com/runner/configuration/advanced-configuration/#the-runnerskubernetes-section)
 
