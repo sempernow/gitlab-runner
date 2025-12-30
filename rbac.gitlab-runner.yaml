@@ -35,6 +35,9 @@ rules:
   resources: ["events"]
   verbs: ["list", "watch"]
 - apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
+- apiGroups: [""]
   resources: ["pods"]
   verbs: ["get","list","watch","create","delete"]
 - apiGroups: [""]
@@ -100,6 +103,21 @@ subjects:
 - kind: ServiceAccount
   name: "glr-jobs-sa"
   namespace: "glr-jobs"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: glr-jobs-sa-cluster-binding
+  labels:
+    app: gitlab-runner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: glr-common-role
+subjects:
+- kind: ServiceAccount
+  name: "glr-jobs-sa"
+  namespace: "glr-jobs"
 
 
 ---
@@ -107,6 +125,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: healthz-reader
+  labels:
+    app: gitlab-runner
 rules:
 - nonResourceURLs: ["/healthz", "/livez", "/readyz"]
   verbs: ["get"]
@@ -114,7 +134,9 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: healthz-reader-binding
+  name: healthz-reader-cluster-binding
+  labels:
+    app: gitlab-runner
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
