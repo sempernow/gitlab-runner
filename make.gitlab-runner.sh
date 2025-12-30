@@ -10,6 +10,7 @@ export GLR_HOST='gitlab.com'
 export GLR_MANAGER='glr-manager'
 export GLR_JOBS='glr-jobs'
 export GLR_DOCKER_HUB_SECRET='docker-hub-secret'
+export GLR_AUTH_TOKEN='glrt-secret' 
 
 repo=gitlab
 chart=gitlab-runner
@@ -18,7 +19,6 @@ ver=0.81.0 # App v18.4.0 : GitLab.com @ 18.6.0-pre
 ns=$GLR_MANAGER
 release=$chart
 values=values.diff.yaml
-secret=glrt-secret # GLR Authentication Token
 
 export GLR_RBAC=rbac.$release.yaml
 
@@ -85,21 +85,22 @@ creds(){
     kubectl -n $GLR_JOBS label secret $secret app=$release
 
     ## 2. Modifiy values file
-    echo "ℹ️ Insert 'image_pull_secrets' declaration into runners.config of '$values' file :"
-    echo "
-    [[runners]]
-    ...
-      [runners.kubernetes]
-        namespace = "$GLR_JOBS"
-        image_pull_secrets = ["$secret"]
-        poll_timeout = 600
-    "
+#    echo "ℹ️ Insert 'image_pull_secrets' declaration into runners.config of '$values' file :"
+#    echo "
+#    [[runners]]
+#    ...
+#      [runners.kubernetes]
+#        namespace = "$GLR_JOBS"
+#        image_pull_secrets = ["$secret"]
+#        poll_timeout = 600
+#    "
 }
 
 tkn(){
-    # This manages GLR Authentication Token (glrt-*) required for TOML config, 
-    # not the GLR Registration Token (GL*).
-
+    # This manages "GLR Authentication Token" (glrt-*) required for TOML config, 
+    # *not* the "GLR Registration Token" (GL*).
+    export secret="$GLR_AUTH_TOKEN"
+    
     gid(){
         # GET group ($1) ID 
         [[ $1 ]] || return 1
@@ -138,16 +139,15 @@ tkn(){
             return 2
 
         type -t ageen &&
-            ageen $seret.tkn &&
+            ageen $secret.tkn &&
                 rm $secret.tkn ||
                     return 3
     }
 
     get(){
         # Print the decrypted token
-        type -t agede > /dev/null 2>&1 &&
-            agede $secret.tkn.age ||
-                return 1
+        agede $secret.tkn.age ||
+            return 1
     }
 
     peek(){
@@ -183,9 +183,11 @@ tkn(){
     [[ $1 ]] || { type $FUNCNAME; return; }
     "$@"
 }
+export -f tkn
 
 values(){
     envsubst < $values.tpl > $values
+    sed -i 's,CI_,$CI_,g' $values
 }
 
 template(){
@@ -217,9 +219,11 @@ up(){
     creds
     values 
     tkn="$(tkn get)" || return 1
-
     rbac || return 2
-   
+
+    # Cleanup old pods
+    kubectl -n $ns delete pods --field-selector=status.phase==Succeeded
+
     # Install/Upgrade the chart
     helm upgrade $release $repo/$chart --install --version $ver -n $ns \
         --create-namespace \

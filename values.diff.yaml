@@ -45,7 +45,7 @@ runners:
         privileged            = false
         pull_policy           = "if-not-present"
         image_pull_secrets    = ["docker-hub-secret"]
-        limit = 4 # Concurrency limit for this runner; less than global concurrent.
+        limit                 = 4 # Concurrency limit for this runner; less than global concurrent.
 
         cpu_request     = "100m"
         memory_request  = "128Mi"
@@ -56,15 +56,28 @@ runners:
         helper_memory_request = "250Mi"
         helper_memory_limit_overwrite_max_allowed = "1Gi"
 
+        [runners.kubernetes.pod_labels]
+          ci-project-name       = "$CI_PROJECT_NAME"
+          ci-project-path       = "$CI_PROJECT_PATH"
+          ci-commit-branch      = "$CI_COMMIT_BRANCH"
+          ci-commit-sha         = "$CI_COMMIT_SHA"
+          ci-commit-timestamp   = "$CI_COMMIT_TIMESTAMP"
+          ci-commit-author      = "$CI_COMMIT_AUTHOR"
+          ci-pipeline-id        = "$CI_PIPELINE_ID"
+          ci-pipeline-url       = "$CI_PIPELINE_URL"
+          ci-job-id             = "$CI_JOB_ID"
+          ci-job-image          = "$CI_JOB_IMAGE"
+
         # [[runners.kubernetes.volumes.pvc]]
         #   ## Requires StorageClass having dynamic provisioning
-        #   name = "builds-pvc-"
+        #   name = "builds-pvc-$CI_CONCURRENT_ID"
         #   mount_path = "/mnt/builds"
 
         # [[runners.kubernetes.volumes.pvc]]  
         #   ## Share cache across jobs
-        #   #name = "cache-pvc-"
+        #   #name = "cache-pvc-$CI_CONCURRENT_ID"
         #   name  = "shared-cache-pvc" 
         #   mount_path      = "/mnt/cache"
         #   #storage_class  = "fast-ssd"
         #   #storage_size   = "20Gi"
+
