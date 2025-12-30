@@ -1,0 +1,70 @@
+image:
+  registry: registry.gitlab.com
+  ## The default helper image is chosen by this (main) image name, variant, version, and arch.
+  image: gitlab-org/gitlab-runner 
+  tag: alpine3.21-v18.4.0
+
+gitlabUrl: https://gitlab.com/
+
+concurrent: 5
+
+rbac:
+  create: false
+
+## Inform the chart of this ServiceAccount, but create it elsewhere. 
+## See rbac.gitlab-runner.yaml
+serviceAccount: 
+  create: false
+  name: glr-manager-sa
+
+runners:
+  config: |
+    ## The total number of concurrent jobs per runner
+    concurrent  = 10
+
+    [[runners]]
+      name        = "glr-jobs"
+      url         = "https://gitlab.com/"
+      executor    = "kubernetes"
+      
+      ## Authentication Token (obtained upon runner registration) is added by helm --set method
+
+      ## Custom /builds and /cache
+      ## Tunable params; StorageClass, size, ...
+      # builds_dir  = "/mnt/builds"
+      # cache_dir   = "/mnt/cache"
+
+      ## Not required (is default) at kubernetes executor
+      # [runners.custom_build_dir]
+      #   enabled = true
+
+      [runners.kubernetes]
+        ## See rbac.gitlab-runner.yaml
+        service_account       = "glr-jobs-sa"
+        namespace             = "glr-jobs"
+        privileged            = false
+        pull_policy           = "if-not-present"
+        image_pull_secrets    = ["docker-hub-secret"]
+        limit = 4 # Concurrency limit for this runner; less than global concurrent.
+
+        cpu_request     = "100m"
+        memory_request  = "128Mi"
+        cpu_limit       = "500m"
+        memory_limit    = "256Mi"
+
+        helper_memory_limit   = "250Mi"
+        helper_memory_request = "250Mi"
+        helper_memory_limit_overwrite_max_allowed = "1Gi"
+
+        # [[runners.kubernetes.volumes.pvc]]
+        #   ## Requires StorageClass having dynamic provisioning
+        #   name = "builds-pvc-"
+        #   mount_path = "/mnt/builds"
+
+        # [[runners.kubernetes.volumes.pvc]]  
+        #   ## Share cache across jobs
+        #   #name = "cache-pvc-"
+        #   name  = "shared-cache-pvc" 
+        #   mount_path      = "/mnt/cache"
+        #   #storage_class  = "fast-ssd"
+        #   #storage_size   = "20Gi"

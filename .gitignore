@@ -1,0 +1,12 @@
+**/oci
+**/cicd-test
+**/LOG.*
+**/*.key
+**/*.tkn
+**/*.tgz
+**/*.tar.gz
+**/*.log
+**/*.html
+**/ci-jobs.capture*.yaml
+**/helm.*.yaml
+

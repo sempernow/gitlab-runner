@@ -1,0 +1,128 @@
+# RBAC : Manager and Jobs SAs have common AuthZ rules by same ClusterRole.
+# Manager : glr-manager-sa
+# - This is the job factory; isolated in its own namespace (glr-manager)
+# - It needs broad across namespaces; its own and wherever jobs run.
+# Jobs : glr-jobs-sa
+# - This owns per-job runner(s) in namespace glr-jobs.
+# - It needs access only to whatever is required of pipelines.
+# - Requires no access to manager namespace.
+# - If CD creates K8s resources in other namespace(s), then needs access there too.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "glr-manager-sa"
+  namespace: "glr-manager"
+  labels:
+    app: gitlab-runner
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "glr-jobs-sa"
+  namespace: "glr-jobs"
+  labels:
+    app: gitlab-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: glr-common-role
+  labels:
+    app: gitlab-runner
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get","list","watch","create","delete"]
+- apiGroups: [""]
+  resources: ["pods/attach","pods/exec"]
+  verbs: ["get","list","watch","create","delete"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get","list","watch"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create","delete","get","update"]
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["create","get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: "RoleBinding"
+metadata:
+  name: glr-manager-sa-binding
+  namespace: "glr-manager"  # Manager SA needs access to both namespaces
+  labels:
+    app: gitlab-runner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: "ClusterRole"
+  name: glr-common-role
+subjects:
+- kind: ServiceAccount
+  name: "glr-manager-sa"
+  namespace: "glr-manager"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: "RoleBinding"
+metadata:
+  name: glr-manager-sa-binding
+  namespace: "glr-jobs"   # Manager SA needs access to both namespaces
+  labels:
+    app: gitlab-runner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: "ClusterRole"
+  name: glr-common-role
+subjects:
+- kind: ServiceAccount
+  name: "glr-manager-sa"
+  namespace: "glr-manager"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: "RoleBinding"
+metadata:
+  name: glr-jobs-sa-binding
+  namespace: "glr-jobs"   # Jobs SA needs access to its namespace only
+  labels:
+    app: gitlab-runner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: "ClusterRole"
+  name: glr-common-role
+subjects:
+- kind: ServiceAccount
+  name: "glr-jobs-sa"
+  namespace: "glr-jobs"
+
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: healthz-reader
+rules:
+- nonResourceURLs: ["/healthz", "/livez", "/readyz"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: healthz-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: healthz-reader
+subjects:
+- kind: ServiceAccount
+  name: "glr-jobs-sa"
+  namespace: "glr-jobs"
+- kind: ServiceAccount
+  name: "glr-manager-sa"
+  namespace: "glr-manager"
