@@ -74,7 +74,9 @@ creds(){
     user=gd9h
     docker_pat_pem=docker.hub.credentials_gd9h.age
     secret=$GLR_DOCKER_HUB_SECRET
-    kubectl get secret $secret >/dev/null 2>&1 || {
+    kubectl get ns $GLR_JOBS >/dev/null 2>&1 ||
+        kubectl create ns $GLR_JOBS
+    kubectl --namespace=$GLR_JOBS get secret $secret >/dev/null 2>&1 || {
         pass="$(agede $docker_pat_pem)"
         kubectl create secret docker-registry $secret \
             --docker-server=index.docker.io \
@@ -82,7 +84,7 @@ creds(){
             --docker-password="$pass" \
             --namespace=$GLR_JOBS
     }
-    kubectl -n $GLR_JOBS label secret $secret app=$release
+    kubectl -n $GLR_JOBS label secret $secret app=$release >/dev/null 2>&1 # K8s reports bogus 'not labeled' regardless
 
     ## 2. Modifiy values file
 #    echo "ℹ️ Insert 'image_pull_secrets' declaration into runners.config of '$values' file :"
@@ -169,7 +171,8 @@ tkn(){
             gitlab-runner register --url https://$GLR_HOST --token $tkn
 
         # Case 2. gitlab-runner on K8s
-        kubectl create ns $ns
+        kubectl get ns $ns >/dev/null 2>&1 ||
+            kubectl create ns $ns
         kubectl create secret generic $secret \
             --from-literal=runner-token="$tkn" \
             -n $ns
@@ -187,7 +190,10 @@ export -f tkn
 
 values(){
     envsubst < $values.tpl > $values
+    sleep 1
     sed -i 's,CI_,$CI_,g' $values
+    sleep 1
+    sed -i 's,GITLAB_USER_,$GITLAB_USER_,g' $values
 }
 
 template(){
@@ -265,7 +271,7 @@ push(){
     type -t md2html.exe &&
         find . -type f -iname '*.md' -exec md2html.exe {} \;
   
-    find . -type f ! -path '*/.git/*' -exec chmod 644 {} \;
+    find . -type f ! -path '*/.git/*' -exec chmod 640 {} \+
     gc && git push && gl && gs
 }
 
