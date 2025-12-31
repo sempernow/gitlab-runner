@@ -1,4 +1,3 @@
-
 # [GitLab Runners on RHEL](https://chat.deepseek.com/share/u6s8c9cy25pi4h51j1)
 
 GitLab Runner Architecture
@@ -15,28 +14,59 @@ GitLab Runner Architecture
         |-- Runner Instance 4 (ssh) --- Token 4
 
 
-## Register a host runner
+## Create &amp; Register a New Runner
 
 A runner may have __many executors__, 
 but each is registered (unique) at GtiLab host; 
 each has their own token.
 
-See [`config.toml.tpl`](config.toml.tpl)
-
-1. At GitLab host Web UI
-
-__Groups__ > `<select the group>` > __Build__ > __Runners__ > __Create group runner__ (button)
-
-Copy the token `glrt-REDACTED`
-
-2. At `gitlab-runner` host
+### TL;DR
 
 ```bash
-glrt=glrt-REDACTED # Obtained from GitLab host
+glrt=glrt-REDACTED # Secret obtained from the runner's GitLab host
 gitlab-runner register  --url https://$GITLAB_HOST  --token $glrt
 ```
 
-### ssh executor
+### Details
+
+At left-side menu:
+
+__Groups__ > `<select the group>` > __Build__ > __Runners__ > __Create group runner__ (button)
+
+__Response page__:
+
+```plaintext
+GitLab Runner must be installed before you can register a runner. 
+How do I install GitLab Runner?
+
+Step 1
+Copy and paste the following command into your command line to register the runner.
+
+gitlab-runner register  --url https://gitlab.com  --token glrt-REDACTED
+ The runner authentication token glrt-REDACTED  displays here for a short time only. After you register the runner, this token is stored in the config.toml and cannot be accessed again from the UI.
+
+Step 2
+Choose an executor when prompted by the command line. Executors run builds in different environments. Not sure which one to select? 
+
+Step 3 (optional)
+Manually verify that the runner is available to pick up jobs.
+
+gitlab-runner run
+This may not be needed if you manage your runner as a system or user service .
+```
+
+Inject secret at runtime using `--set` override
+
+```bash
+helm upgrade ... --set runnerToken="$(<$secret.key)"
+```
+
+
+See [`config.toml.tpl`](config.toml.tpl) for set of executors, 
+_excluding kubernetes_.
+
+
+### Runner having SSH executor
 
 Target host(s), where Jobs of this ssh executor are performed, 
 must have the SSH user (`gitlab-runner`).
@@ -71,7 +101,7 @@ before_script:
     echo "====================================="
 ```
 
-#### Security Context
+#### Security Context of SSH executor
 
 While you can identify the GitLab user, 
 the SSH executor runs as the configured SSH user __regardless of who triggered the pipeline__. 
@@ -106,41 +136,9 @@ bash make.gitlab-runner.sh up
 ### [`values.diff.yaml.tpl`](values.diff.yaml.tpl) | [Configuration Settings](https://docs.gitlab.com/runner/executors/kubernetes/#configuration-settings)
 
 
-## @ GitLab host : Create a New Runner
+---
 
-At left-side menu:
-
-__Groups__ > `<select the group>` > __Build__ > __Runners__ > __Create group runner__ (button)
-
-Response page:
-
-```
-GitLab Runner must be installed before you can register a runner. How do I install GitLab Runner?
-
-Step 1
-Copy and paste the following command into your command line to register the runner.
-
-gitlab-runner register  --url https://gitlab.com  --token glrt-REDACTED
- The runner authentication token glrt-REDACTED  displays here for a short time only. After you register the runner, this token is stored in the config.toml and cannot be accessed again from the UI.
-
-Step 2
-Choose an executor when prompted by the command line. Executors run builds in different environments. Not sure which one to select? 
-
-Step 3 (optional)
-Manually verify that the runner is available to pick up jobs.
-
-gitlab-runner run
-This may not be needed if you manage your runner as a system or user service .
-```
-
-Inject secret at runtime using `--set` override
-
-```bash
-helm upgrade ... --set runnerToken="$(<$secret.key)"
-```
-
-
-## Storage Isolation 
+# Storage Isolation 
 
 Regarding GitLab CI pipelines having a kubernetes executor configured for default `/build` and `/cache` locations, __filesystem and build isolation__ must be managed at pipeline definition, `.gitlab-ci.yml`, if concurrent jobs per runner are allowed, else &hellip;
 
@@ -149,7 +147,7 @@ __Problem__:
 - `/builds`: By default, this is a Persistent Volume Claim (PVC) shared by all jobs on the runner. Concurrent jobs will have their project directories created here (e.g., `/builds/group-name/project-name/`). If _two jobs from the same project_ run concurrently, they will likely _clone into the same directory_, causing corruption.
 - `/cache`: This is also a shared PVC. If concurrent jobs read from and write to the cache simultaneously, you can experience race conditions, corrupted cache archives, or jobs using incomplete cache.
 
-### 1. K8s Infra Level
+## 1. K8s Infra Level
 
 __Pre-allocate__ the per-concurrency volumes (__`builds-pvc-*`__).
 
@@ -230,7 +228,7 @@ concurrent = 4 # Each requires a PVC/PV pair.
 - __Isolation__: __Per-project/branch__ cache isolation
 
 
-### 2. GitLab Logic Level
+## 2. GitLab Logic Level
 
 Job definition has associated isoluation scheme
 
@@ -245,7 +243,7 @@ cache:
 - Logical isolation - different projects/branches don't share cache
 - Unlimited combinations - automatically managed by GitLab
 
-### How (1.) + (2.) work together
+## How (1.) + (2.) work together
 
 ```
 Physical Layer (K8s PVCs):
@@ -286,7 +284,9 @@ job_b:
     - echo "So does this one, avoiding conflicts with job_a."
 ```
 
-### Repo Size per Clone depth
+---
+
+## Repo Size per Clone depth
 
 Default for GitLab runner is   
 "`git clone --depth 50 $url`"
@@ -301,7 +301,7 @@ git bundle create depth-1.bundle --all --depth=1
 ls -hl *.bundle
 ```
 
-### Runners per Job Size
+## Runners per Job Size
 
 ```toml
 # Runner for lightweight jobs
@@ -319,7 +319,7 @@ ls -hl *.bundle
   tag_list = ["large", "build"]
 ```
 
-### `ResourceQuota` Management
+## `ResourceQuota` Management
 
 CI/CD Jobs namespace should differ from that of 
 the deployed applications built by those CI/CD pipelines.
@@ -351,7 +351,7 @@ spec:
     limits.memory: "64Gi"
 ```
 
-### RBAC Isolation
+## RBAC Isolation
 
 ```yaml
 ---
@@ -376,6 +376,7 @@ rules:
   verbs: ["get", "list", "create", "patch"]
 ```
 
+---
 
 ## [GitLab Runner](https://gitlab.com/gitlab-org/gitlab-runner) | [Releases](https://gitlab.com/gitlab-org/gitlab-runner/-/releases)
 
@@ -413,5 +414,5 @@ trivy image --scanners vuln --severity CRITICAL,HIGH $img
 
 ```
 
-
+###
 
