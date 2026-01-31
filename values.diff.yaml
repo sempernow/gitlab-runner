@@ -30,8 +30,10 @@ runners:
       name        = "glr-jobs"
       url         = "https://gitlab.com/"
       executor    = "kubernetes"
-     
-      #environment = ["FF_USE_ADAPTIVE_REQUEST_CONCURRENCY=true"] # Supposedly adaptive; DO NOT USE.
+
+      ## Must set a writable HOME if setting  
+      environment = ["HOME=/home/gitlab-runner"]
+      
       request_concurrency = 4
 
       ## Authentication Token (obtained upon runner registration) is added by helm --set method
@@ -77,22 +79,22 @@ runners:
 
         [runners.kubernetes.pod_labels]
           ## Labels with valid K8s label values only (alphanumeric, -, _, .)
-          gitlab-user-id        = ""
-          ci-project-name       = ""
-          ci-commit-branch      = ""
-          ci-commit-sha         = ""
-          ci-pipeline-id        = ""
-          ci-job-name           = ""
-          ci-job-id             = ""
+          gitlab-user-id        = "$GITLAB_USER_ID"
+          ci-project-name       = "$CI_PROJECT_NAME"
+          ci-commit-branch      = "$CI_COMMIT_BRANCH"
+          ci-commit-sha         = "$CI_COMMIT_SHA"
+          ci-pipeline-id        = "$CI_PIPELINE_ID"
+          ci-job-name           = "$CI_JOB_NAME"
+          ci-job-id             = "$CI_JOB_ID"
 
         [runners.kubernetes.pod_annotations]
           ## Annotations for values that may contain invalid label characters (URLs, paths, emails, colons)
-          "gitlab.com/user-name"        = ""
-          "gitlab.com/project-path"     = ""
-          "gitlab.com/commit-timestamp" = ""
-          "gitlab.com/commit-author"    = ""
-          "gitlab.com/pipeline-url"     = ""
-          "gitlab.com/job-image"        = ""
+          "gitlab.com/user-name"        = "$GITLAB_USER_NAME"
+          "gitlab.com/project-path"     = "$CI_PROJECT_PATH"
+          "gitlab.com/commit-timestamp" = "$CI_COMMIT_TIMESTAMP"
+          "gitlab.com/commit-author"    = "$CI_COMMIT_AUTHOR"
+          "gitlab.com/pipeline-url"     = "$CI_PIPELINE_URL"
+          "gitlab.com/job-image"        = "$CI_JOB_IMAGE"
 
         [runners.kubernetes.pod_security_context]
           run_as_non_root = true
@@ -118,9 +120,14 @@ runners:
           medium = "Memory"  # Optional: /dev/shm : RAM-backed (tmpfs) for speed
           # OR omit 'medium' to use node disk storage
 
+        [[runners.kubernetes.volumes.empty_dir]]
+          name = "home"
+          mount_path = "/home/gitlab-runner"
+
         [[runners.kubernetes.volumes.host_path]]
           name = "smb-data"
           mount_path = "/mnt/smb-data"
           ## Mount point of the SMB on node(s) 
           host_path = "/mnt/smb-data-01"
+
 
