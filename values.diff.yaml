@@ -31,7 +31,7 @@ runners:
       url         = "https://gitlab.com/"
       executor    = "kubernetes"
 
-      ## Must set a writable HOME if setting  
+      ## Must set a writable HOME if pod_security_context runs as non-root user
       environment = ["HOME=/home/gitlab-runner"]
       
       request_concurrency = 4
@@ -129,5 +129,7 @@ runners:
           mount_path = "/mnt/smb-data"
           ## Mount point of the SMB on node(s) 
           host_path = "/mnt/smb-data-01"
+          mount_propagation = "None"
+
 
 

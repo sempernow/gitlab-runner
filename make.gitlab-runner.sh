@@ -260,14 +260,17 @@ status(){
     kubectl get sa,ClusterRole,ClusterRoleBinding,${all:-pod} \
         -l app=$release -A
 }
-
+toml(){
+    kubectl -n glr-manager get cm gitlab-runner -o yaml |
+        yq '.data."config.template.toml"'
+}
 down(){
     # Teardown
     helm -n $GLR_MANAGER delete $release --wait &&
         kubectl delete ns $GLR_MANAGER $GLR_JOBS
 }
 
-push(){
+commit(){
     type -t md2html.exe &&
         find . -type f -iname '*.md' -exec md2html.exe {} \;
   
